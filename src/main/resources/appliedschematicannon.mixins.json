@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "package": "com.zhichaoxi.applied_schematicannon.mixin",
+  "mixins": [
+    "SchematicannonBlockEntityMixin"
+  ],
+  "client": [
+  ],
+  "server": [
+  ],
+  "compatibilityLevel": "JAVA_21",
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
