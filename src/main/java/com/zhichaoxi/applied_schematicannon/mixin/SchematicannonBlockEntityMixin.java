@@ -7,10 +7,9 @@ import appeng.api.networking.IInWorldGridNodeHost;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.storage.MEStorage;
+import appeng.blockentity.misc.InterfaceBlockEntity;
 import com.simibubi.create.content.schematics.cannon.SchematicannonBlockEntity;
-import com.simibubi.create.content.schematics.cannon.SchematicannonInventory;
 import com.simibubi.create.content.schematics.requirement.ItemRequirement;
-import com.simibubi.create.foundation.item.ItemHelper;
 import net.createmod.catnip.data.Iterate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -18,10 +17,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
-import net.neoforged.neoforge.items.IItemHandler;
-import net.neoforged.neoforge.items.wrapper.EmptyItemHandler;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -33,13 +29,6 @@ import java.util.ArrayList;
 @Mixin(SchematicannonBlockEntity.class)
 public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
 
-    @Shadow public boolean hasCreativeCrate;
-    @Shadow public int remainingFuel;
-
-    @Shadow public abstract int getShotsPerGunpowder();
-
-    @Shadow public boolean sendUpdate;
-    @Shadow public SchematicannonInventory inventory;
     @Unique
     protected ArrayList<IGridNode> createOddities$attachedMENetwork = new ArrayList<>();
 
@@ -58,7 +47,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
             if (level != null) {
                 blockEntity = level.getBlockEntity(worldPosition.relative(facing));
             }
-            if (blockEntity != null) {
+            if (blockEntity instanceof InterfaceBlockEntity) {
                 IInWorldGridNodeHost capability =
                         level.getCapability(AECapabilities.IN_WORLD_GRID_NODE_HOST,
                                 blockEntity.getBlockPos());
