@@ -9,15 +9,18 @@ import appeng.api.stacks.AEKey;
 import appeng.api.storage.MEStorage;
 import appeng.blockentity.misc.InterfaceBlockEntity;
 import com.simibubi.create.content.schematics.cannon.SchematicannonBlockEntity;
+import com.simibubi.create.content.schematics.cannon.SchematicannonInventory;
 import com.simibubi.create.content.schematics.requirement.ItemRequirement;
 import net.createmod.catnip.data.Iterate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -29,16 +32,76 @@ import java.util.ArrayList;
 @Mixin(SchematicannonBlockEntity.class)
 public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
 
+    @Shadow protected abstract void refillFuelIfPossible();
+
+    @Shadow public boolean hasCreativeCrate;
+    @Shadow public int remainingFuel;
+
+    @Shadow public abstract int getShotsPerGunpowder();
+
+    @Shadow public boolean sendUpdate;
+    @Shadow public SchematicannonInventory inventory;
+    @Shadow public String statusMsg;
+    @Shadow public int blocksPlaced;
+    @Shadow public SchematicannonBlockEntity.State state;
     @Unique
-    protected ArrayList<IGridNode> createOddities$attachedMENetwork = new ArrayList<>();
+    protected ArrayList<IGridNode> appliedSchematicannon$attachedMENetwork = new ArrayList<>();
 
     public SchematicannonBlockEntityMixin(BlockEntityType<?> type, BlockPos pos, BlockState blockState) {
         super(type, pos, blockState);
     }
 
+    @Inject(method = "tick", at = @At(value = "INVOKE", target = "Lcom/simibubi/create/content/schematics/cannon/SchematicannonBlockEntity;refillFuelIfPossible()V"))
+    public void tick$refillFromMENetwork(CallbackInfo ci) {
+        refillFuelIfPossible();
+        appliedSchematicannon$refillFuelIfPossible();
+    }
+
+    @Unique
+    protected void appliedSchematicannon$refillFuelIfPossible()
+    {
+        if (hasCreativeCrate)
+            return;
+        if (remainingFuel > getShotsPerGunpowder()) {
+            remainingFuel = getShotsPerGunpowder();
+            sendUpdate = true;
+            return;
+        }
+
+        if (remainingFuel > 0)
+            return;
+
+        if (!inventory.getStackInSlot(4)
+                .isEmpty())
+            inventory.getStackInSlot(4)
+                    .shrink(1);
+        else {
+            boolean externalGunpowderFound = false;
+            for (IGridNode cap : appliedSchematicannon$attachedMENetwork) {
+                MEStorage storage = cap.getGrid().getStorageService()
+                        .getInventory();
+
+                if (storage.extract(AEItemKey.of(Items.GUNPOWDER), 1, Actionable.MODULATE, null) == 0)
+                    continue;
+                externalGunpowderFound = true;
+                break;
+            }
+            if (!externalGunpowderFound)
+                return;
+        }
+
+        remainingFuel += getShotsPerGunpowder();
+        if (statusMsg.equals("noGunpowder")) {
+            if (blocksPlaced > 0)
+                state = SchematicannonBlockEntity.State.RUNNING;
+            statusMsg = "ready";
+        }
+        sendUpdate = true;
+    }
+
     @Inject(method = "findInventories", at = @At("RETURN"))
     public void findInventories$findMENetwork(CallbackInfo ci) {
-        createOddities$attachedMENetwork.clear();
+        appliedSchematicannon$attachedMENetwork.clear();
         for (Direction facing : Iterate.directions) {
 
             if (level != null && !level.isLoaded(worldPosition.relative(facing))) continue;
@@ -54,7 +117,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
                 if (capability != null) {
                     IGridNode gridNode =  capability.getGridNode(facing.getOpposite());
                     if (gridNode != null) {
-                        createOddities$attachedMENetwork.add(gridNode);
+                        appliedSchematicannon$attachedMENetwork.add(gridNode);
                     }
                 }
             }
@@ -67,7 +130,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         ItemRequirement.ItemUseType usage = required.usage;
 
         if (usage == ItemRequirement.ItemUseType.DAMAGE) {
-            for (IGridNode cap : createOddities$attachedMENetwork) {
+            for (IGridNode cap : appliedSchematicannon$attachedMENetwork) {
                 if (cap != null) {
                     MEStorage storage = cap.getGrid()
                             .getStorageService().getInventory();
@@ -102,7 +165,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         // Find and remove
         boolean success = false;
         long amountFound = 0;
-        for (IGridNode cap : createOddities$attachedMENetwork) {
+        for (IGridNode cap : appliedSchematicannon$attachedMENetwork) {
             if (cap != null)
             {
                 MEStorage storage = cap.getGrid()
@@ -121,7 +184,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
 
         if (!simulate && success) {
             amountFound = 0;
-            for (IGridNode cap : createOddities$attachedMENetwork) {
+            for (IGridNode cap : appliedSchematicannon$attachedMENetwork) {
                 if (cap != null)
                 {
                     MEStorage storage = cap.getGrid()
