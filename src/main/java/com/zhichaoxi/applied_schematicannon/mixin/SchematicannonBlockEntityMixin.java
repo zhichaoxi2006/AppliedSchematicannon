@@ -44,8 +44,8 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
     @Shadow public String statusMsg;
     @Shadow public int blocksPlaced;
     @Shadow public SchematicannonBlockEntity.State state;
-    @Unique
-    protected ArrayList<IGridNode> appliedSchematicannon$attachedMENetwork = new ArrayList<>();
+
+    @Unique protected ArrayList<IGridNode> appliedSchematicannon$attachedMENetwork = new ArrayList<>();
 
     public SchematicannonBlockEntityMixin(BlockEntityType<?> type, BlockPos pos, BlockState blockState) {
         super(type, pos, blockState);
