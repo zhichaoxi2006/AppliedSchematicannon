@@ -8,6 +8,7 @@ import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.storage.MEStorage;
 import appeng.blockentity.misc.InterfaceBlockEntity;
+import com.simibubi.create.content.schematics.cannon.MaterialChecklist;
 import com.simibubi.create.content.schematics.cannon.SchematicannonBlockEntity;
 import com.simibubi.create.content.schematics.cannon.SchematicannonInventory;
 import com.simibubi.create.content.schematics.requirement.ItemRequirement;
@@ -45,21 +46,46 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
     @Shadow public int blocksPlaced;
     @Shadow public SchematicannonBlockEntity.State state;
 
-    @Unique protected ArrayList<IGridNode> appliedSchematicannon$attachedMENetwork = new ArrayList<>();
+    @Shadow public abstract void findInventories();
+
+    @Shadow public MaterialChecklist checklist;
+    @Unique protected ArrayList<IGridNode> SchematicannonBlockEntityMixin$attachedMENetwork = new ArrayList<>();
 
     public SchematicannonBlockEntityMixin(BlockEntityType<?> type, BlockPos pos, BlockState blockState) {
         super(type, pos, blockState);
     }
 
+    @Inject(method = "updateChecklist", at = @At(value = "INVOKE", target = "Lcom/simibubi/create/content/schematics/cannon/SchematicannonBlockEntity;findInventories()V"))
+    public void SchematicannonBlockEntityMixin$updateChecklist(CallbackInfo ci) {
+        findInventories();
+        for (IGridNode cap : SchematicannonBlockEntityMixin$attachedMENetwork) {
+            if (cap == null)
+                continue;
+            MEStorage storage = cap.getGrid()
+                    .getStorageService().getInventory();
+            var set = storage.getAvailableStacks().keySet();
+            for(AEKey key : set) {
+                if (key instanceof AEItemKey)
+                {
+                    long amount = storage.extract(key, Long.MAX_VALUE, Actionable.SIMULATE, null);
+                    ItemStack stack = ((AEItemKey) key).toStack((int) amount);
+                    if (stack.isEmpty()) {
+                        continue;
+                    }
+                    checklist.collect(stack);
+                }
+            }
+        }
+    }
+
     @Inject(method = "tick", at = @At(value = "INVOKE", target = "Lcom/simibubi/create/content/schematics/cannon/SchematicannonBlockEntity;refillFuelIfPossible()V"))
     public void tick$refillFromMENetwork(CallbackInfo ci) {
         refillFuelIfPossible();
-        appliedSchematicannon$refillFuelIfPossible();
+        SchematicannonBlockEntityMixin$refillFuelIfPossible();
     }
 
     @Unique
-    protected void appliedSchematicannon$refillFuelIfPossible()
-    {
+    protected void SchematicannonBlockEntityMixin$refillFuelIfPossible() {
         if (hasCreativeCrate)
             return;
         if (remainingFuel > getShotsPerGunpowder()) {
@@ -77,7 +103,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
                     .shrink(1);
         else {
             boolean externalGunpowderFound = false;
-            for (IGridNode cap : appliedSchematicannon$attachedMENetwork) {
+            for (IGridNode cap : SchematicannonBlockEntityMixin$attachedMENetwork) {
                 MEStorage storage = cap.getGrid().getStorageService()
                         .getInventory();
 
@@ -101,7 +127,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
 
     @Inject(method = "findInventories", at = @At("RETURN"))
     public void findInventories$findMENetwork(CallbackInfo ci) {
-        appliedSchematicannon$attachedMENetwork.clear();
+        SchematicannonBlockEntityMixin$attachedMENetwork.clear();
         for (Direction facing : Iterate.directions) {
 
             if (level != null && !level.isLoaded(worldPosition.relative(facing))) continue;
@@ -117,7 +143,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
                 if (capability != null) {
                     IGridNode gridNode =  capability.getGridNode(facing.getOpposite());
                     if (gridNode != null) {
-                        appliedSchematicannon$attachedMENetwork.add(gridNode);
+                        SchematicannonBlockEntityMixin$attachedMENetwork.add(gridNode);
                     }
                 }
             }
@@ -130,7 +156,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         ItemRequirement.ItemUseType usage = required.usage;
 
         if (usage == ItemRequirement.ItemUseType.DAMAGE) {
-            for (IGridNode cap : appliedSchematicannon$attachedMENetwork) {
+            for (IGridNode cap : SchematicannonBlockEntityMixin$attachedMENetwork) {
                 if (cap != null) {
                     MEStorage storage = cap.getGrid()
                             .getStorageService().getInventory();
@@ -165,7 +191,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         // Find and remove
         boolean success = false;
         long amountFound = 0;
-        for (IGridNode cap : appliedSchematicannon$attachedMENetwork) {
+        for (IGridNode cap : SchematicannonBlockEntityMixin$attachedMENetwork) {
             if (cap != null)
             {
                 MEStorage storage = cap.getGrid()
@@ -184,7 +210,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
 
         if (!simulate && success) {
             amountFound = 0;
-            for (IGridNode cap : appliedSchematicannon$attachedMENetwork) {
+            for (IGridNode cap : SchematicannonBlockEntityMixin$attachedMENetwork) {
                 if (cap != null)
                 {
                     MEStorage storage = cap.getGrid()
