@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.zhichaoxi.applied_schematicannon.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "appliedschematicannon.refmap.json",
+  "mixins": [
+    "SchematicannonBlockEntityMixin"
+  ],
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
