@@ -150,9 +150,12 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         }
     }
 
-    @Inject(method = "grabItemsFromAttachedInventories", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "grabItemsFromAttachedInventories", at = @At("TAIL"), cancellable = true)
     public void grabItemsFromAttachedInventories$grabFromMENetwork(ItemRequirement.StackRequirement required, boolean simulate,
                                                                    CallbackInfoReturnable<Boolean> cir) {
+        if (cir.getReturnValue()) {
+            return;
+        }
         ItemRequirement.ItemUseType usage = required.usage;
 
         if (usage == ItemRequirement.ItemUseType.DAMAGE) {
