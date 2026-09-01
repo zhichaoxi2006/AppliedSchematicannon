@@ -2,6 +2,7 @@ package com.zhichaoxi.applied_schematicannon.mixin;
 
 import appeng.api.config.Actionable;
 import appeng.api.networking.IGridNode;
+import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
@@ -60,6 +61,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
     @Inject(method = "updateChecklist", at = @At(value = "INVOKE", target = "Lcom/simibubi/create/content/schematics/cannon/SchematicannonBlockEntity;findInventories()V"))
     public void SchematicannonBlockEntityMixin$updateChecklist(CallbackInfo ci) {
         findInventories();
+        IActionSource actionSource = IActionSource.empty();
         for (InterfaceBlockEntity be : SchematicannonBlockEntityMixin$attachedMEInterface) {
             if (be == null)
                 continue;
@@ -73,7 +75,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
             for(AEKey key : set) {
                 if (key instanceof AEItemKey)
                 {
-                    long amount = storage.extract(key, Long.MAX_VALUE, Actionable.SIMULATE, null);
+                    long amount = storage.extract(key, Long.MAX_VALUE, Actionable.SIMULATE, actionSource);
                     ItemStack stack = ((AEItemKey) key).toStack((int) amount);
                     if (stack.isEmpty()) {
                         continue;
@@ -109,6 +111,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
                     .shrink(1);
         else {
             boolean externalGunpowderFound = false;
+            IActionSource actionSource = IActionSource.empty();
             for (InterfaceBlockEntity be : SchematicannonBlockEntityMixin$attachedMEInterface) {
                 IGridNode node = be.getInterfaceLogic().getActionableNode();
                 if (node == null) {
@@ -117,7 +120,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
                 MEStorage storage = node.getGrid().getStorageService()
                         .getInventory();
 
-                if (storage.extract(AEItemKey.of(Items.GUNPOWDER), 1, Actionable.MODULATE, null) == 0)
+                if (storage.extract(AEItemKey.of(Items.GUNPOWDER), 1, Actionable.MODULATE, actionSource) == 0)
                     continue;
                 externalGunpowderFound = true;
                 break;
@@ -158,6 +161,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         if (cir.getReturnValue()) {
             return;
         }
+        IActionSource actionSource = IActionSource.empty();
         ItemRequirement.ItemUseType usage = required.usage;
 
         if (usage == ItemRequirement.ItemUseType.DAMAGE) {
@@ -180,11 +184,11 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
                                 continue;
 
                             if (!simulate) {
-                                long amount = storage.extract(key, 1, Actionable.MODULATE, null);
+                                long amount = storage.extract(key, 1, Actionable.MODULATE, actionSource);
                                 ItemStack stack = new ItemStack(((AEItemKey) key).getItem(), (int) amount);
                                 stack.setDamageValue(stack.getDamageValue() + 1);
                                 if (stack.getDamageValue() <= stack.getMaxDamage()) {
-                                    storage.insert(AEItemKey.of(stack), stack.getCount(), Actionable.MODULATE, null);
+                                    storage.insert(AEItemKey.of(stack), stack.getCount(), Actionable.MODULATE, actionSource);
                                 }
                             }
 
@@ -210,7 +214,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
             MEStorage storage = node.getGrid()
                     .getStorageService().getInventory();
             amountFound += storage.extract(AEItemKey.of(required.stack),
-                    required.stack.getCount(), Actionable.SIMULATE, null);
+                    required.stack.getCount(), Actionable.SIMULATE, actionSource);
             if (amountFound < required.stack.getCount())
             {
                 if (!skipMissing && logic.getInstalledUpgrades(AEItems.CRAFTING_CARD.asItem()) > 0) {
@@ -236,7 +240,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
                     MEStorage storage = node.getGrid()
                             .getStorageService().getInventory();
                     amountFound += storage.extract(AEItemKey.of(required.stack),
-                            required.stack.getCount(), Actionable.MODULATE, null);
+                            required.stack.getCount(), Actionable.MODULATE, actionSource);
                 }
                 if (amountFound < required.stack.getCount())
                 {
