@@ -439,8 +439,12 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
             if (skipMissing) {
                 appliedschematicannon$reportSkipMissing(required.stack);
             } else {
+                // Ask for everything the rest of this schematic still needs of that item, not just the one stack that
+                // is blocking the current block. Requesting a single item per placement makes an auto-crafting job
+                // start and finish for every single block, which is far slower than crafting the rest in one go.
+                long batch = Math.max(requiredAmount - found, appliedschematicannon$remainingRequirement(required.stack));
                 requested = MEInterfaceHelper.requestCrafting(interfaces, level,
-                        appliedschematicannon$pendingCraftingJobs, key, requiredAmount - found,
+                        appliedschematicannon$pendingCraftingJobs, key, batch,
                         appliedschematicannon$actionHostOf(interfaces));
                 if (!requested) {
                     appliedschematicannon$reportUnrequestable(required.stack,
@@ -458,6 +462,23 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         }
         appliedschematicannon$reportRequest(required.stack, requiredAmount, found, simulate, skipMissing, false);
         cir.setReturnValue(true);
+    }
+
+    /**
+     * @return how many more of {@code stack} the rest of this schematic needs, or {@code 0} when the cannon has no
+     * requirement data to go by.
+     * <p>
+     * Create collects this while building the material checklist for the blocks it still has to place, and
+     * {@code getRequiredAmount} already subtracts what {@code updateChecklist} gathered from the network, so the value
+     * is the remaining shortfall. It shrinks as the cannon makes progress.
+     */
+    @Unique
+    private long appliedschematicannon$remainingRequirement(ItemStack stack) {
+        if (checklist == null || stack.isEmpty()) {
+            return 0;
+        }
+
+        return Math.max(0, checklist.getRequiredAmount(stack.getItem()));
     }
 
     /**
