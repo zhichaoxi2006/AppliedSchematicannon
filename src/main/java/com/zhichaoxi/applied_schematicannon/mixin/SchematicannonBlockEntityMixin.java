@@ -147,6 +147,16 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
     private boolean appliedschematicannon$checkingStall;
 
     /**
+     * How long the cannon may sit in {@code searching} before its state is reported, and whether that happened yet.
+     */
+    @Unique
+    private static final int SEARCHING_REPORT_DELAY = 100;
+    @Unique
+    private int appliedschematicannon$searchingTicks;
+    @Unique
+    private boolean appliedschematicannon$reportedSearching;
+
+    /**
      * How often a repeated request for the same item is re-reported, in ticks.
      */
     @Unique
@@ -404,6 +414,45 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         // Re-enable this line when the cannon appears to be stuck.
         // appliedschematicannon$reportStatusChange();
         appliedschematicannon$checkStall();
+        appliedschematicannon$checkSearching();
+    }
+
+    /**
+     * Explains a cannon that has been sitting in {@code searching} for a while. This status is set when the blueprint's
+     * current target may not be placed, and the cannon then skips past targets without ever looking at any items, so it
+     * is worth distinguishing from a cannon that is genuinely waiting for materials.
+     * <p>
+     * Reported once per cannon because the values behind it rarely change.
+     */
+    @Unique
+    private void appliedschematicannon$checkSearching() {
+        if (!"searching".equals(statusMsg)) {
+            appliedschematicannon$searchingTicks = 0;
+            return;
+        }
+
+        if (++appliedschematicannon$searchingTicks < SEARCHING_REPORT_DELAY
+                || appliedschematicannon$reportedSearching) {
+            return;
+        }
+        appliedschematicannon$reportedSearching = true;
+
+        if (printer == null) {
+            LOGGER.info("Cannon is stuck in 'searching' but has no schematic printer (at {})", worldPosition);
+            return;
+        }
+        if (!printer.isLoaded()) {
+            LOGGER.info("Cannon is stuck in 'searching' but no schematic is loaded (state={}, blueprint={}) (at {})",
+                    state, inventory.getStackInSlot(0).getHoverName().getString(), worldPosition);
+            return;
+        }
+
+        var target = printer.getCurrentTarget();
+        var requirement = printer.getCurrentRequirement();
+        LOGGER.info("Cannon is stuck in 'searching' (state={}, stage={}, target={}, requirementInvalid={},"
+                        + " placeable={}, missingItem={}) (at {})", state, printer.getPrintStage(), target,
+                requirement.isInvalid(), printer.shouldPlaceCurrent(level, this::shouldPlace),
+                missingItem == null ? "none" : missingItem.getHoverName().getString(), worldPosition);
     }
 
     @Unique
