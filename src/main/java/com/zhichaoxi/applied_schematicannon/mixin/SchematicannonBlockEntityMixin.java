@@ -117,6 +117,12 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
     private final Map<Item, Long> appliedschematicannon$reportedOrders = new HashMap<>();
 
     /**
+     * When each item's "request suppressed" explanation was last reported.
+     */
+    @Unique
+    private final Map<Item, Long> appliedschematicannon$reportedBlocked = new HashMap<>();
+
+    /**
      * When each item's "missing but nothing ordered" explanation was last reported.
      */
     @Unique
@@ -301,6 +307,32 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
     }
 
     /**
+     * Explains a request that was suppressed because the network is already working on the item, throttled like the
+     * other reports. A stalled auto-crafting job keeps this true forever, and the cannon then looks like it ignores a
+     * network that holds the ingredients.
+     *
+     * @param alreadyCrafting what AE2 says is on its way, or {@code -1} when this mod's own request is still queued.
+     */
+    @Unique
+    private void appliedschematicannon$reportBlocked(ItemStack stack, long alreadyCrafting) {
+        long now = level == null ? 0 : level.getGameTime();
+        Long last = appliedschematicannon$reportedBlocked.get(stack.getItem());
+        if (last != null && now - last < REQUEST_REPORT_INTERVAL) {
+            return;
+        }
+        appliedschematicannon$reportedBlocked.put(stack.getItem(), now);
+
+        if (alreadyCrafting < 0) {
+            LOGGER.info("Not ordering {}: a request for it is already queued, waiting for the crafting calculation",
+                    stack.getHoverName().getString());
+        } else {
+            LOGGER.info("Not ordering {}: the ME network is already crafting {} of it - if nothing ever arrives, that"
+                            + " job is stuck (at {})", stack.getHoverName().getString(), alreadyCrafting,
+                    worldPosition);
+        }
+    }
+
+    /**
      * Reports the size of an order, throttled like {@link #appliedschematicannon$reportRequest}. The three numbers make
      * it possible to tell a genuinely large order from the cannon ordering the same materials over and over.
      */
@@ -439,6 +471,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         MEInterfaceHelper.pollCraftingJobs(appliedschematicannon$attachedMEInterfaces,
                 appliedschematicannon$pendingCraftingJobs);
     }
+
     @Inject(method = "findInventories", at = @At("RETURN"))
     public void findInventories$findMENetwork(CallbackInfo ci) {
         ArrayList<InterfaceBlockEntity> interfaces = appliedschematicannon$attachedMEInterfaces;
@@ -503,7 +536,8 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
                 long batch = Math.max(shortfall, planned > 0 ? planned : shortfall);
                 requested = MEInterfaceHelper.requestCrafting(interfaces, level,
                         appliedschematicannon$pendingCraftingJobs, key, batch,
-                        appliedschematicannon$actionHostOf(interfaces));
+                        appliedschematicannon$actionHostOf(interfaces),
+                        alreadyCrafting -> appliedschematicannon$reportBlocked(required.stack, alreadyCrafting));
                 if (!requested) {
                     appliedschematicannon$reportUnrequestable(required.stack,
                             MEInterfaceHelper.describeRequestFailure(interfaces, key));

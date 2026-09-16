@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.function.LongConsumer;
 
 /**
  * Bridges a Schematicannon to the ME network through the ME Interfaces attached to it.
@@ -251,14 +252,17 @@ public final class MEInterfaceHelper {
      * enough of it. Auto-crafting needs to be armed by an ME Interface with a Crafting Card, so a cannon never
      * silently starts jobs on a network its owner did not set up for it.
      *
-     * @param host    the machine the request is made through. It must resolve to an actionable grid node, otherwise
-     *                AE2's crafting tree refuses to look for patterns and reports the requested item as unavailable.
-     * @param missing how many items the cannon is missing right now
+     * @param host     the machine the request is made through. It must resolve to an actionable grid node, otherwise
+     *                 AE2's crafting tree refuses to look for patterns and reports the requested item as unavailable.
+     * @param missing  how many items the cannon is missing right now
+     * @param onBlocked called with the amount a stalled job is already crafting when the request is suppressed because
+     *                 the network is already working on it. Reporting is left to the caller so it can throttle: this
+     *                 method runs every tick.
      * @return {@code true} if a job for this key is queued or already running on a crafting CPU.
      */
     public static boolean requestCrafting(List<InterfaceBlockEntity> interfaces, Level level,
                                           PendingCraftingJobs pending, AEKey what, long missing,
-                                          @Nullable IActionHost host) {
+                                          @Nullable IActionHost host, LongConsumer onBlocked) {
         if (missing <= 0 || level == null || level.isClientSide()) {
             return false;
         }
@@ -277,15 +281,19 @@ public final class MEInterfaceHelper {
             ICraftingService crafting = grid.getCraftingService();
 
             // AE2 tracks what every crafting CPU on the grid is already working on, so this key must not be requested
-            // a second time while the items are on their way.
-            if (crafting.getRequestedAmount(what) > 0 || crafting.isRequesting(what)) {
-                LOGGER.debug("{} is already being crafted by the ME network", describe(stack));
+            // a second time while the items are on their way. A stalled job keeps this true forever, which looks
+            // exactly like the cannon refusing to order anything, so it is reported rather than silently ignored.
+            long alreadyCrafting = crafting.getRequestedAmount(what);
+            if (alreadyCrafting > 0 || crafting.isRequesting(what)) {
+                onBlocked.accept(alreadyCrafting);
                 return true;
             }
 
             // A calculation that is still running already is the request for this key; starting another one every tick
-            // would pile up crafting simulations on AE2's crafting thread pool.
+            // would pile up crafting simulations on AE2's crafting thread pool. A request stuck in this state is the
+            // other way the cannon can look like it ignores a network that has the ingredients.
             if (pending.get(what) != null) {
+                onBlocked.accept(-1);
                 return true;
             }
 
