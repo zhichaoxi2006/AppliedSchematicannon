@@ -102,7 +102,9 @@ public final class MEInterfaceHelper {
          */
         public void clear() {
             for (Entry entry : entries) {
-                entry.plan().cancel(false);
+                if (entry.plan() != null) {
+                    entry.plan().cancel(false);
+                }
                 entry.requester().cancel();
             }
             entries.clear();
@@ -111,17 +113,26 @@ public final class MEInterfaceHelper {
 
     /**
      * One queued crafting request.
+     * <p>
+     * A {@code null} plan marks a stale entry: its calculation finished but the result was unusable, so the entry only
+     * holds a cooldown and is discarded once that elapses. Keeping such an entry out of the map entirely would make
+     * the cannon re-plan on every single tick, while keeping the finished plan would make it retry a snapshot of the
+     * network that may no longer be true.
      *
      * @param stack       what is being crafted
-     * @param plan        the pending crafting calculation
+     * @param plan        the pending crafting calculation, or {@code null} for a stale entry
      * @param requester   receives the job's output and stores it in the ME network
      * @param cooldown    ticks to wait before retrying after a failure
      * @param reservation how many items the request is expected to add to the ME network
      */
-    public record Entry(GenericStack stack, Future<ICraftingPlan> plan, CraftingRequester requester, int cooldown,
-                        long reservation) {
+    public record Entry(GenericStack stack, @Nullable Future<ICraftingPlan> plan, CraftingRequester requester,
+                        int cooldown, long reservation) {
         public Entry withCooldown(int newCooldown) {
             return new Entry(stack, plan, requester, newCooldown, reservation);
+        }
+
+        public Entry stale(int cooldownTicks) {
+            return new Entry(stack, null, requester, cooldownTicks, reservation);
         }
     }
 
@@ -512,6 +523,16 @@ public final class MEInterfaceHelper {
         for (int i = 0; i < pending.entries.size(); i++) {
             Entry entry = pending.entries.get(i);
 
+            if (entry.plan() == null) {
+                // A stale entry only waits out its cooldown and is then gone, so the next request plans afresh.
+                if (entry.cooldown() > 0) {
+                    pending.set(i, entry.withCooldown(entry.cooldown() - 1));
+                } else {
+                    pending.entries.remove(i--);
+                }
+                continue;
+            }
+
             if (entry.cooldown() > 0) {
                 pending.set(i, entry.withCooldown(entry.cooldown() - 1));
                 continue;
@@ -521,14 +542,16 @@ public final class MEInterfaceHelper {
                 continue;
             }
 
-            // A simulated plan means the network cannot produce the full amount right now, for example because an
-            // ingredient is missing. Retry later instead of hammering the crafting calculation pool.
+            // A simulated plan means the network could not produce the full amount when the plan was calculated, for
+            // example because an ingredient was missing. That plan is a snapshot of the network at that moment, so the
+            // entry is retired rather than retried: retrying it would hold the stale failure forever and the cannon
+            // would never plan again with the ingredients the player adds afterwards.
             ICraftingPlan plan = resolve(entry.plan());
             if (plan == null || plan.simulation()) {
-                LOGGER.info("The ME network cannot produce {} right now ({}), retrying in {} ticks",
+                LOGGER.info("The ME network cannot produce {} right now ({}); re-planning in {} ticks",
                         describe(entry.stack()), explainMissing(plan, interfaces, entry.stack().what()),
                         FAILURE_COOLDOWN_TICKS);
-                pending.set(i, entry.withCooldown(FAILURE_COOLDOWN_TICKS));
+                pending.set(i, entry.stale(FAILURE_COOLDOWN_TICKS));
                 continue;
             }
 
