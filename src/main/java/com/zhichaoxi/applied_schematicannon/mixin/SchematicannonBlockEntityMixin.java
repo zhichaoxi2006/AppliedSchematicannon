@@ -179,7 +179,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         }
 
         appliedschematicannon$lastReportedStatus = current;
-        LOGGER.info("Cannon status is now '{}' (state={}, missingItem={}, adjacent ME interfaces={}) (at {})", current,
+        LOGGER.debug("Cannon status is now '{}' (state={}, missingItem={}, adjacent ME interfaces={}) (at {})", current,
                 state, missingItem == null ? "none" : missingItem.getHoverName().getString(),
                 appliedschematicannon$attachedMEInterfaces.size(), worldPosition);
     }
@@ -221,7 +221,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
             appliedschematicannon$checkingStall = false;
         }
 
-        LOGGER.info("Cannon is stuck in '{}' for {}: {} (at {})", statusMsg,
+        LOGGER.debug("Cannon is stuck in '{}' for {}: {} (at {})", statusMsg,
                 missingItem.getHoverName().getString(), reason, worldPosition);
     }
 
@@ -235,7 +235,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         }
 
         appliedschematicannon$reportedSkipMissing = true;
-        LOGGER.info("The cannon is set to skip missing blocks, so {} is never requested from the ME network (at {})",
+        LOGGER.debug("The cannon is set to skip missing blocks, so {} is never requested from the ME network (at {})",
                 stack.getHoverName().getString(), worldPosition);
     }
 
@@ -249,10 +249,10 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         }
 
         if (reason == null) {
-            LOGGER.info("The ME network was asked for {} but could not produce it (at {}) - check that a pattern is"
+            LOGGER.debug("The ME network was asked for {} but could not produce it (at {}) - check that a pattern is"
                     + " encoded and a crafting CPU is free", stack.getHoverName().getString(), worldPosition);
         } else {
-            LOGGER.info("Cannot request {} from the ME network: {} (at {})", stack.getHoverName().getString(),
+            LOGGER.debug("Cannot request {} from the ME network: {} (at {})", stack.getHoverName().getString(),
                     reason, worldPosition);
         }
     }
@@ -274,7 +274,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         }
         appliedschematicannon$reportedRequests.put(stack.getItem(), now);
 
-        LOGGER.info("ME network request for {} x{} (found {}): simulate={} skipMissing={} craftingRequested={}"
+        LOGGER.debug("ME network request for {} x{} (found {}): simulate={} skipMissing={} craftingRequested={}"
                         + " interfaces={} (at {})", stack.getHoverName().getString(), needed, found, simulate, skipped,
                 committed, appliedschematicannon$attachedMEInterfaces.size(), worldPosition);
     }
@@ -299,19 +299,19 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
                 Long.MAX_VALUE, IActionSource.empty());
         boolean pending = appliedschematicannon$pendingCraftingJobs.get(key) != null;
 
-        LOGGER.info("Not requesting {}: checklistRequired={} inFlight={} availableInNetwork={} pendingJob={}"
+        LOGGER.debug("Not requesting {}: checklistRequired={} inFlight={} availableInNetwork={} pendingJob={}"
                         + " (at {})", stack.getHoverName().getString(), required, inFlight, available, pending,
                 worldPosition);
 
         if (required == 0) {
-            LOGGER.info("  -> the cannon believes it already has enough of this item; if it is still stuck on it, the"
+            LOGGER.debug("  -> the cannon believes it already has enough of this item; if it is still stuck on it, the"
                     + " material checklist is out of date");
         } else if (required > 0 && inFlight > 0) {
-            LOGGER.info("  -> {} are already being crafted for this network, but nothing has been delivered yet."
+            LOGGER.debug("  -> {} are already being crafted for this network, but nothing has been delivered yet."
                     + " Stalled auto-crafting, for example a pattern provider that cannot output, blocks further"
                     + " requests until it finishes", inFlight);
         } else if (required > 0) {
-            LOGGER.info("  -> the remaining requirement could not be determined; re-open the cannon's GUI to refresh"
+            LOGGER.debug("  -> the remaining requirement could not be determined; re-open the cannon's GUI to refresh"
                     + " its material checklist");
         }
     }
@@ -333,10 +333,10 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         appliedschematicannon$reportedBlocked.put(stack.getItem(), now);
 
         if (alreadyCrafting < 0) {
-            LOGGER.info("Not ordering {}: a request for it is already queued, waiting for the crafting calculation",
+            LOGGER.debug("Not ordering {}: a request for it is already queued, waiting for the crafting calculation",
                     stack.getHoverName().getString());
         } else {
-            LOGGER.info("Not ordering {}: the ME network is already crafting {} of it - if nothing ever arrives, that"
+            LOGGER.debug("Not ordering {}: the ME network is already crafting {} of it - if nothing ever arrives, that"
                             + " job is stuck (at {})", stack.getHoverName().getString(), alreadyCrafting,
                     worldPosition);
         }
@@ -356,7 +356,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         }
         appliedschematicannon$reportedOrders.put(stack.getItem(), now);
 
-        LOGGER.info("ME network order for {}: blocking={} available={} remainingForSchematic={} -> ordered {} (at {})",
+        LOGGER.debug("ME network order for {}: blocking={} available={} remainingForSchematic={} -> ordered {} (at {})",
                 stack.getHoverName().getString(), blockingNeed, available, remainingForSchematic, ordered,
                 worldPosition);
     }
@@ -438,18 +438,18 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         appliedschematicannon$reportedSearching = true;
 
         if (printer == null) {
-            LOGGER.info("Cannon is stuck in 'searching' but has no schematic printer (at {})", worldPosition);
+            LOGGER.debug("Cannon is stuck in 'searching' but has no schematic printer (at {})", worldPosition);
             return;
         }
         if (!printer.isLoaded()) {
-            LOGGER.info("Cannon is stuck in 'searching' but no schematic is loaded (state={}, blueprint={}) (at {})",
+            LOGGER.debug("Cannon is stuck in 'searching' but no schematic is loaded (state={}, blueprint={}) (at {})",
                     state, inventory.getStackInSlot(0).getHoverName().getString(), worldPosition);
             return;
         }
 
         var target = printer.getCurrentTarget();
         var requirement = printer.getCurrentRequirement();
-        LOGGER.info("Cannon is stuck in 'searching' (state={}, stage={}, target={}, requirementInvalid={},"
+        LOGGER.debug("Cannon is stuck in 'searching' (state={}, stage={}, target={}, requirementInvalid={},"
                         + " placeable={}, missingItem={}) (at {})", state, printer.getPrintStage(), target,
                 requirement.isInvalid(), printer.shouldPlaceCurrent(level, this::shouldPlace),
                 missingItem == null ? "none" : missingItem.getHoverName().getString(), worldPosition);

@@ -190,6 +190,6 @@ public final class DiagnoseCommand {
 
     private static void reply(CommandSourceStack source, String message) {
         source.sendSuccess(() -> Component.literal(message), false);
-        LOGGER.info("[diagnose] {}", message);
+        LOGGER.debug("[diagnose] {}", message);
     }
 }

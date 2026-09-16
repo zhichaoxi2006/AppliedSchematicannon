@@ -339,7 +339,7 @@ public final class MEInterfaceHelper {
             }
 
             pending.add(new Entry(stack, plan, new CraftingRequester(grid, actionHostOf(grid, interfaces)), 0, missing));
-            LOGGER.info("Requested {} x{} from the ME network", describe(stack), missing);
+            LOGGER.debug("Requested {} x{} from the ME network", describe(stack), missing);
             return true;
         }
 
@@ -548,7 +548,7 @@ public final class MEInterfaceHelper {
             // would never plan again with the ingredients the player adds afterwards.
             ICraftingPlan plan = resolve(entry.plan());
             if (plan == null || plan.simulation()) {
-                LOGGER.info("The ME network cannot produce {} right now ({}); re-planning in {} ticks",
+                LOGGER.debug("The ME network cannot produce {} right now ({}); re-planning in {} ticks",
                         describe(entry.stack()), explainMissing(plan, interfaces, entry.stack().what()),
                         FAILURE_COOLDOWN_TICKS);
                 pending.set(i, entry.stale(FAILURE_COOLDOWN_TICKS));
