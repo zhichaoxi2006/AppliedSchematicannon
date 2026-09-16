@@ -493,11 +493,14 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
             if (skipMissing) {
                 appliedschematicannon$reportSkipMissing(required.stack);
             } else {
-                // Ask for everything the rest of this schematic still needs of that item, not just the one stack that
-                // is blocking the current block. Requesting a single item per placement makes an auto-crafting job
-                // start and finish for every single block, which is far slower than crafting the rest in one go.
-                long need = appliedschematicannon$remainingRequirement(required.stack, key);
-                long batch = need > 0 ? need : requiredAmount - found;
+                // The cannon definitely needs at least this much, because that is what is blocking the current block.
+                long shortfall = Math.max(1, requiredAmount - found);
+                // Asking only for that stack makes an auto-crafting job start and finish for every single block, so
+                // the rest of the schematic's requirement is ordered in one go when that is known. This is only ever
+                // allowed to make the order bigger: falling back to the shortfall keeps a cannon from falling silent
+                // because the material checklist has not been built yet or is out of date.
+                long planned = appliedschematicannon$remainingRequirement(required.stack, key);
+                long batch = Math.max(shortfall, planned > 0 ? planned : shortfall);
                 requested = MEInterfaceHelper.requestCrafting(interfaces, level,
                         appliedschematicannon$pendingCraftingJobs, key, batch,
                         appliedschematicannon$actionHostOf(interfaces));
@@ -505,12 +508,7 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
                     appliedschematicannon$reportUnrequestable(required.stack,
                             MEInterfaceHelper.describeRequestFailure(interfaces, key));
                 } else {
-                    appliedschematicannon$reportOrder(required.stack, requiredAmount, found, need, batch);
-                }
-                // A cannon that needs an item but never asks for it is the hard case to diagnose, so the reason is
-                // spelled out whenever the order comes out as nothing at all.
-                if (batch <= 0) {
-                    appliedschematicannon$reportRefusal(required.stack, key);
+                    appliedschematicannon$reportOrder(required.stack, requiredAmount, found, planned, batch);
                 }
             }
             appliedschematicannon$reportRequest(required.stack, requiredAmount, found, simulate, skipMissing,
@@ -527,14 +525,15 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
     }
 
     /**
-     * @return how many more of {@code key} the rest of this schematic needs on top of what is already on its way, or
-     * {@code 0} when nothing more has to be requested.
+     * @return how many more of {@code stack} the rest of the schematic needs beyond what is already being crafted, or
+     * {@code 0} when that cannot be determined or nothing more is needed.
      * <p>
      * Create collects the total for the blocks it still has to place, and {@code getRequiredAmount} already subtracts
-     * what {@code updateChecklist} gathered from the network. Items that are still being crafted are deliberately not
-     * part of that, because this mod's requester takes crafted items before they reach network storage. They are
-     * therefore counted here through AE2's own in-flight total, which is what stops the cannon from ordering the same
-     * materials again while a job is still running.
+     * what {@code updateChecklist} gathered from the network. Items still being crafted are deliberately not part of
+     * that, because this mod's requester takes crafted items before they reach network storage, so AE2's in-flight
+     * total is subtracted here instead. That is what stops a second order from being placed while the first is still
+     * running. Callers must treat {@code 0} as "unknown", never as "order nothing": the requirement can legitimately be
+     * unavailable, for example right after the cannon is loaded and before its checklist has been rebuilt.
      */
     @Unique
     private long appliedschematicannon$remainingRequirement(ItemStack stack, AEItemKey key) {
