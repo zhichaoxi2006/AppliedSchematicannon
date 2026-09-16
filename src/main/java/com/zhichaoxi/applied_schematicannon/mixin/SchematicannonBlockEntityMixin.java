@@ -2,7 +2,6 @@ package com.zhichaoxi.applied_schematicannon.mixin;
 
 import appeng.api.config.Actionable;
 import appeng.api.networking.IGridNode;
-import appeng.api.networking.crafting.ICraftingService;
 import appeng.api.networking.security.IActionHost;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEItemKey;
@@ -110,6 +109,12 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
      */
     @Unique
     private final Map<Item, Long> appliedschematicannon$reportedRequests = new HashMap<>();
+
+    /**
+     * When each item's order size was last reported, throttled the same way.
+     */
+    @Unique
+    private final Map<Item, Long> appliedschematicannon$reportedOrders = new HashMap<>();
 
     /**
      * The cannon status that was reported last, so a status change is logged exactly once.
@@ -253,6 +258,25 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
     }
 
     /**
+     * Reports the size of an order, throttled like {@link #appliedschematicannon$reportRequest}. The three numbers make
+     * it possible to tell a genuinely large order from the cannon ordering the same materials over and over.
+     */
+    @Unique
+    private void appliedschematicannon$reportOrder(ItemStack stack, long blockingNeed, long available,
+                                                   long remainingForSchematic, long ordered) {
+        long now = level == null ? 0 : level.getGameTime();
+        Long last = appliedschematicannon$reportedOrders.get(stack.getItem());
+        if (last != null && now - last < REQUEST_REPORT_INTERVAL) {
+            return;
+        }
+        appliedschematicannon$reportedOrders.put(stack.getItem(), now);
+
+        LOGGER.info("ME network order for {}: blocking={} available={} remainingForSchematic={} -> ordered {} (at {})",
+                stack.getHoverName().getString(), blockingNeed, available, remainingForSchematic, ordered,
+                worldPosition);
+    }
+
+    /**
      * Reports everything the attached ME network can provide, so the cannon's checklist accounts for network items and
      * for items that still have to be synthesized, instead of only what sits in neighbouring inventories.
      */
@@ -268,7 +292,6 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
             }
 
             MEStorage storage = node.getGrid().getStorageService().getInventory();
-            ICraftingService crafting = node.getGrid().getCraftingService();
             for (AEKey key : storage.getAvailableStacks().keySet()) {
                 if (!(key instanceof AEItemKey itemKey)) {
                     continue;
@@ -284,18 +307,6 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
                 if (!stack.isEmpty()) {
                     checklist.collect(stack);
                     appliedschematicannon$gathered.add(itemKey.getReadOnlyStack().getItem());
-                }
-            }
-
-            // Items the network can synthesize are not in it yet, but the cannon can still get them.
-            for (AEKey key : crafting.getCraftables(AEItemKey.filter())) {
-                if (!(key instanceof AEItemKey itemKey)) {
-                    continue;
-                }
-
-                ItemStack stack = itemKey.getReadOnlyStack().copyWithCount(1);
-                if (!stack.isEmpty() && appliedschematicannon$gathered.add(stack.getItem())) {
-                    checklist.collect(stack);
                 }
             }
         }
@@ -442,13 +453,16 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
                 // Ask for everything the rest of this schematic still needs of that item, not just the one stack that
                 // is blocking the current block. Requesting a single item per placement makes an auto-crafting job
                 // start and finish for every single block, which is far slower than crafting the rest in one go.
-                long batch = Math.max(requiredAmount - found, appliedschematicannon$remainingRequirement(required.stack));
+                long need = appliedschematicannon$remainingRequirement(required.stack, key);
+                long batch = need > 0 ? need : requiredAmount - found;
                 requested = MEInterfaceHelper.requestCrafting(interfaces, level,
                         appliedschematicannon$pendingCraftingJobs, key, batch,
                         appliedschematicannon$actionHostOf(interfaces));
                 if (!requested) {
                     appliedschematicannon$reportUnrequestable(required.stack,
                             MEInterfaceHelper.describeRequestFailure(interfaces, key));
+                } else {
+                    appliedschematicannon$reportOrder(required.stack, requiredAmount, found, need, batch);
                 }
             }
             appliedschematicannon$reportRequest(required.stack, requiredAmount, found, simulate, skipMissing,
@@ -465,20 +479,44 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
     }
 
     /**
-     * @return how many more of {@code stack} the rest of this schematic needs, or {@code 0} when the cannon has no
-     * requirement data to go by.
+     * @return how many more of {@code key} the rest of this schematic needs on top of what is already on its way, or
+     * {@code 0} when nothing more has to be requested.
      * <p>
-     * Create collects this while building the material checklist for the blocks it still has to place, and
-     * {@code getRequiredAmount} already subtracts what {@code updateChecklist} gathered from the network, so the value
-     * is the remaining shortfall. It shrinks as the cannon makes progress.
+     * Create collects the total for the blocks it still has to place, and {@code getRequiredAmount} already subtracts
+     * what {@code updateChecklist} gathered from the network. Items that are still being crafted are deliberately not
+     * part of that, because this mod's requester takes crafted items before they reach network storage. They are
+     * therefore counted here through AE2's own in-flight total, which is what stops the cannon from ordering the same
+     * materials again while a job is still running.
      */
     @Unique
-    private long appliedschematicannon$remainingRequirement(ItemStack stack) {
+    private long appliedschematicannon$remainingRequirement(ItemStack stack, AEItemKey key) {
         if (checklist == null || stack.isEmpty()) {
             return 0;
         }
 
-        return Math.max(0, checklist.getRequiredAmount(stack.getItem()));
+        long required = checklist.getRequiredAmount(stack.getItem());
+        if (required <= 0) {
+            return 0;
+        }
+
+        return Math.max(0, required - appliedschematicannon$inFlight(key));
+    }
+
+    /**
+     * @return how many of {@code key} the attached networks are already crafting.
+     */
+    @Unique
+    private long appliedschematicannon$inFlight(AEItemKey key) {
+        long total = 0;
+        for (InterfaceBlockEntity iface : appliedschematicannon$attachedMEInterfaces) {
+            IGridNode node = appliedschematicannon$nodeOf(iface);
+            if (node == null) {
+                continue;
+            }
+
+            total += node.getGrid().getCraftingService().getRequestedAmount(key);
+        }
+        return total;
     }
 
     /**
