@@ -117,6 +117,12 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
     private final Map<Item, Long> appliedschematicannon$reportedOrders = new HashMap<>();
 
     /**
+     * When each item's "missing but nothing ordered" explanation was last reported.
+     */
+    @Unique
+    private final Map<Item, Long> appliedschematicannon$reportedRefusals = new HashMap<>();
+
+    /**
      * The cannon status that was reported last, so a status change is logged exactly once.
      */
     @Unique
@@ -255,6 +261,43 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
         LOGGER.info("ME network request for {} x{} (found {}): simulate={} skipMissing={} craftingRequested={}"
                         + " interfaces={} (at {})", stack.getHoverName().getString(), needed, found, simulate, skipped,
                 committed, appliedschematicannon$attachedMEInterfaces.size(), worldPosition);
+    }
+
+    /**
+     * Explains a cannon that is missing an item but computes nothing to order. Each candidate cause is spelled out with
+     * the numbers behind it, because the symptoms are otherwise identical: the cannon simply sits on {@code missingBlock}
+     * while doing nothing.
+     */
+    @Unique
+    private void appliedschematicannon$reportRefusal(ItemStack stack, AEItemKey key) {
+        long now = level == null ? 0 : level.getGameTime();
+        Long last = appliedschematicannon$reportedRefusals.get(stack.getItem());
+        if (last != null && now - last < REQUEST_REPORT_INTERVAL) {
+            return;
+        }
+        appliedschematicannon$reportedRefusals.put(stack.getItem(), now);
+
+        int required = checklist == null ? -1 : checklist.getRequiredAmount(stack.getItem());
+        long inFlight = appliedschematicannon$inFlight(key);
+        long available = MEInterfaceHelper.simulateExtract(appliedschematicannon$attachedMEInterfaces, key,
+                Long.MAX_VALUE, IActionSource.empty());
+        boolean pending = appliedschematicannon$pendingCraftingJobs.get(key) != null;
+
+        LOGGER.info("Not requesting {}: checklistRequired={} inFlight={} availableInNetwork={} pendingJob={}"
+                        + " (at {})", stack.getHoverName().getString(), required, inFlight, available, pending,
+                worldPosition);
+
+        if (required == 0) {
+            LOGGER.info("  -> the cannon believes it already has enough of this item; if it is still stuck on it, the"
+                    + " material checklist is out of date");
+        } else if (required > 0 && inFlight > 0) {
+            LOGGER.info("  -> {} are already being crafted for this network, but nothing has been delivered yet."
+                    + " Stalled auto-crafting, for example a pattern provider that cannot output, blocks further"
+                    + " requests until it finishes", inFlight);
+        } else if (required > 0) {
+            LOGGER.info("  -> the remaining requirement could not be determined; re-open the cannon's GUI to refresh"
+                    + " its material checklist");
+        }
     }
 
     /**
@@ -463,6 +506,11 @@ public abstract class SchematicannonBlockEntityMixin extends BlockEntity {
                             MEInterfaceHelper.describeRequestFailure(interfaces, key));
                 } else {
                     appliedschematicannon$reportOrder(required.stack, requiredAmount, found, need, batch);
+                }
+                // A cannon that needs an item but never asks for it is the hard case to diagnose, so the reason is
+                // spelled out whenever the order comes out as nothing at all.
+                if (batch <= 0) {
+                    appliedschematicannon$reportRefusal(required.stack, key);
                 }
             }
             appliedschematicannon$reportRequest(required.stack, requiredAmount, found, simulate, skipMissing,
